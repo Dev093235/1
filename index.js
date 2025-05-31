@@ -1,58 +1,59 @@
-require('dotenv').config(); // .env फ़ाइल से पर्यावरण वेरिएबल्स लोड करें
 const express = require('express');
 const bodyParser = require('body-parser');
-const multer = require('multer'); // फ़ाइल अपलोड हैंडलिंग के लिए
+const multer = require('multer');
 const path = require('path');
-const fs = require('fs'); // फ़ाइल सिस्टम ऑपरेशंस के लिए
-
+const fs = require('fs');
 const login = require('facebook-chat-api'); // FCA API
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 // --- Middleware Setup ---
-app.use(bodyParser.json()); // JSON बॉडी पार्स करने के लिए
-app.use(bodyParser.urlencoded({ extended: true })); // URL-encoded बॉडी पार्स करने के लिए
-
-// 'public' फोल्डर से स्टैटिक फ़ाइलें सर्व करें (यह बाद में बनाएंगे)
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
-
-// फ़ाइल अपलोड के लिए Multer सेटअप
-// अस्थायी रूप से 'uploads/' डायरेक्टरी में फ़ाइलें सेव करेगा
 const upload = multer({ dest: 'uploads/' });
 
 // --- Global variables for bot state ---
-let fbApi = null; // facebook-chat-api इंस्टेंस को स्टोर करेगा
+let fbApi = null;
 let botRunning = false;
-let npFileContent = null; // 'np' फ़ाइल के कंटेंट को स्टोर करेगा
+let npFileContent = null;
+let listeningThreadIds = new Set();
+let botConfig = {}; // To store all form inputs for bot logic
 
 // --- Routes ---
 
-// यह रूट बाद में हमारे UI (HTML) को सर्व करेगा
 app.get('/', (req, res) => {
-    // अभी के लिए एक साधारण मैसेज भेजें, जब हम 'public' फोल्डर बनाएंगे तो इसे अपडेट करेंगे
-    res.send('<h1>Rudra Multi Convo Bot Server is running!</h1><p>UI will be here soon.</p>');
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// यह रूट बॉट को शुरू करने के लिए फॉर्म सबमिशन को हैंडल करेगा
+// This route handles the form submission to start the bot
 app.post('/start-bot', upload.single('npFile'), async (req, res) => {
     if (botRunning) {
         return res.status(400).json({ error: 'Bot is already running. Please stop it first if you want to restart.' });
     }
 
-    const { fbEmail, fbPassword, tokenType, tokenValue, phoneNumber, rudraName, someNumber } = req.body;
-    const npFile = req.file; // अपलोड की गई np फ़ाइल
+    // Capture all form fields based on the new UI (with appStateJson)
+    const { appStateJson, phoneNumber, rudraName, someNumber } = req.body;
+    const npFile = req.file;
 
-    if (!fbEmail || !fbPassword || !npFile) {
-        return res.status(400).json({ error: 'Missing required fields: Facebook Email, Password, or NP File.' });
+    // Store all captured config for bot's use later
+    botConfig = {
+        appState: appStateJson, // Now directly taking appState JSON string
+        inboxConvoUid: phoneNumber,
+        haterName: rudraName,
+        timeSeconds: someNumber,
+        npFilePath: npFile ? npFile.path : null,
+        npFileOriginalName: npFile ? npFile.originalname : null
+    };
+
+    if (!botConfig.appState || !npFile) {
+        return res.status(400).json({ error: 'Missing required fields: Facebook Cookies (appState JSON) or NP File.' });
     }
 
-    console.log('Received bot start request:');
-    console.log('Email:', fbEmail);
-    // console.log('Password:', fbPassword); // उत्पादन में पासवर्ड लॉग न करें!
-    console.log('NP File:', npFile.originalname);
+    console.log('Received bot start request with config:', botConfig);
 
-    // अपलोड की गई np फ़ाइल के कंटेंट को पढ़ें
+    // Read uploaded np file content
     try {
         npFileContent = fs.readFileSync(npFile.path, 'utf8');
         console.log('NP File Content Loaded.');
@@ -60,63 +61,81 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
         console.error('Error reading NP file:', error);
         return res.status(500).json({ error: 'Failed to read NP file.' });
     } finally {
-        // अपलोड की गई फ़ाइल को हटा दें
         fs.unlink(npFile.path, (err) => {
             if (err) console.error("Error deleting uploaded file:", err);
         });
     }
 
-    // --- FCA लॉगिन लॉजिक ---
-    const credentials = {
-        email: fbEmail,
-        password: fbPassword
-    };
+    // --- FCA Login Logic using appState ---
+    let appState;
+    try {
+        appState = JSON.parse(botConfig.appState);
+        if (!Array.isArray(appState)) {
+            throw new Error("appState must be a JSON array.");
+        }
+    } catch (e) {
+        console.error("Error parsing appState JSON:", e);
+        return res.status(400).json({ error: 'Invalid Facebook Cookies (appState JSON) provided. It must be a valid JSON array.' });
+    }
 
-    login(credentials, (err, api) => {
+    login({ appState: appState }, (err, api) => {
         if (err) {
             console.error("FCA Login Error:", err);
-            // FCA API के लिए, appstate.json बनाना महत्वपूर्ण है।
-            // यदि 'appstate.json' फ़ाइल नहीं बनती है, तो आप 'Login refused' या 2FA संबंधित त्रुटियां देख सकते हैं।
-            // हम बाद में ऐपस्टेट को कैसे संभालना है, इस पर चर्चा करेंगे।
             if (err.error === 'login-fac') {
-                return res.status(401).json({ error: 'Facebook 2FA required. Please handle 2FA manually or use appstate.json.' });
+                return res.status(401).json({ error: 'Facebook 2FA required for this appState. You might need a fresh appState.' });
             }
             return res.status(500).json({ error: `FCA Login Failed: ${err.message || err}` });
         }
 
-        fbApi = api; // API इंस्टेंस को स्टोर करें
+        fbApi = api;
         botRunning = true;
-        console.log("Successfully logged in to Facebook Messenger with FCA!");
+        listeningThreadIds.clear();
+        console.log("Successfully logged in to Facebook Messenger with FCA using appState!");
 
-        // संदेशों के लिए सुनना शुरू करें
+        // Example of using the other form fields (botConfig)
+        console.log(`Bot configured for Inbox/Convo UID: ${botConfig.inboxConvoUid}`);
+        console.log(`Hater Name: ${botConfig.haterName}`);
+        console.log(`Time (seconds): ${botConfig.timeSeconds}`);
+
         api.listen((listenErr, message) => {
             if (listenErr) {
                 console.error("FCA Listen Error:", listenErr);
                 return;
             }
 
+            if (message.threadID && !listeningThreadIds.has(message.threadID)) {
+                listeningThreadIds.add(message.threadID);
+                console.log(`Now listening to thread: ${message.threadID}`);
+            }
+
             console.log("Received message:", message);
 
-            // --- ऑटो-रिप्लाई लॉजिक (npFileContent का उपयोग करके) ---
-            if (message.body) {
-                let replyMessage = "Sorry, I don't understand that.";
+            // --- Auto-reply logic (using npFileContent and other configs) ---
+            if (message.body && message.senderID !== api.getCurrentUserID()) {
+                let replyMessage = "Sorry, I didn't understand that. Please check my settings or NP file.";
 
-                // यह वह जगह है जहाँ आप अपनी 'np' फ़ाइल लुकअप लागू करेंगे।
-                // अभी के लिए, हम मान लेते हैं कि npFileContent एक JSON स्ट्रिंग है
-                // जिसमें प्रश्न-उत्तर जोड़े हैं।
                 try {
                     const parsedNp = JSON.parse(npFileContent);
-                    if (parsedNp[message.body.toLowerCase()]) {
-                        replyMessage = parsedNp[message.body.toLowerCase()];
+                    const userMessage = message.body.toLowerCase();
+
+                    if (parsedNp[userMessage]) {
+                        replyMessage = parsedNp[userMessage];
+                    } else {
+                        for (const key in parsedNp) {
+                            if (userMessage.includes(key.toLowerCase())) {
+                                replyMessage = parsedNp[key];
+                                break;
+                            }
+                        }
                     }
                 } catch (e) {
-                    // यदि npFileContent JSON नहीं है, तो एक डिफ़ॉल्ट रिप्लाई
-                    replyMessage = `You said: "${message.body}". I'm set up with NP file but cannot parse it yet.`;
+                    console.warn("NP file content is not valid JSON. Treating as plain text or default.", e);
+                    replyMessage = `I received your message: "${message.body}". My NP file isn't parsed as JSON.`;
                 }
-
 
                 api.sendMessage(replyMessage, message.threadID, (sendErr) => {
                     if (sendErr) console.error("Error sending message:", sendErr);
+                    else console.log(`Replied to ${message.threadID}: "${replyMessage}"`);
                 });
             }
         });
@@ -125,6 +144,19 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
     });
 });
 
+// --- Stop Bot Route ---
+app.post('/stop-bot', (req, res) => {
+    if (fbApi && botRunning) {
+        fbApi.stopListening();
+        fbApi = null;
+        botRunning = false;
+        listeningThreadIds.clear();
+        console.log("Bot stopped successfully.");
+        res.status(200).json({ message: 'Bot stopped successfully.' });
+    } else {
+        res.status(400).json({ error: 'Bot is not running.' });
+    }
+});
 
 // --- Error Handling ---
 app.use((err, req, res, next) => {
@@ -132,8 +164,8 @@ app.use((err, req, res, next) => {
     res.status(500).send('Something broke!');
 });
 
-// --- सर्वर शुरू करें ---
+// --- Start Server ---
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
-    console.log('Visit / to see the temporary UI message.');
+    console.log('Access the bot control panel in your browser.');
 });
