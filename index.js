@@ -3,31 +3,26 @@ const bodyParser = require('body-parser');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const login = require('@xaviabot/fca'); // CHANGED: Using @xaviabot/fca now!
+const login = require('fca-unofficial');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// --- Middleware Setup ---
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 const upload = multer({ dest: 'uploads/' });
 
-// --- Global variables for bot state ---
-let fbApi = null; // Single bot instance
+let fbApi = null;
 let botRunning = false;
 let npFileContent = null;
 let listeningThreadIds = new Set();
-let botConfig = {}; // To store all form inputs for the single bot
-
-// --- Routes ---
+let botConfig = {};
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// This route handles the form submission to start the single bot
 app.post('/start-bot', upload.single('npFile'), async (req, res) => {
     if (botRunning) {
         return res.status(400).json({ error: 'Bot is already running. Please stop it first if you want to restart.' });
@@ -74,13 +69,10 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
         return res.status(400).json({ error: 'Invalid Facebook Cookies (appState JSON) provided. It must be a valid JSON array.' });
     }
 
-    // Using @xaviabot/fca's login function
     login({ appState: appState }, (err, api) => {
         if (err) {
             console.error("FCA Login Error:", err);
             if (err.error) {
-                // @xaviabot/fca might have slightly different error messages,
-                // so we try to catch common ones.
                 if (err.error.includes("invalid credentials") || err.error.includes("Invalid cookies") || err.error.includes("Login refused")) {
                     return res.status(401).json({ error: 'Login failed: Invalid appState JSON or Facebook blocked the login attempt. Try fresh cookies.' });
                 }
@@ -94,7 +86,7 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
         fbApi = api;
         botRunning = true;
         listeningThreadIds.clear();
-        console.log(`Successfully logged in to Facebook Messenger with FCA (@xaviabot/fca) for ID: ${api.getCurrentUserID()}`);
+        console.log(`Successfully logged in to Facebook Messenger with FCA (fca-unofficial) for ID: ${api.getCurrentUserID()}`);
 
         console.log(`Bot configured for Inbox/Convo UID: ${botConfig.inboxConvoUid}`);
         console.log(`Hater Name: ${botConfig.haterName}`);
@@ -157,13 +149,12 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
     });
 });
 
-// --- Stop Bot Route ---
 app.post('/stop-bot', (req, res) => {
     if (fbApi && botRunning) {
         fbApi.stopListening();
         fbApi = null;
         botRunning = false;
-    listeningThreadIds.clear();
+        listeningThreadIds.clear();
         npFileContent = null;
         console.log("Bot stopped successfully.");
         res.status(200).json({ message: 'Bot stopped successfully.' });
@@ -172,13 +163,11 @@ app.post('/stop-bot', (req, res) => {
     }
 });
 
-// --- Error Handling ---
 app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).send('Something broke!');
 });
 
-// --- Start Server ---
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
     console.log('Access the bot control panel in your browser.');
