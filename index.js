@@ -3,7 +3,7 @@ const bodyParser = require('body-parser');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const login = require('fca-unofficial');
+const login = require('fca-new'); // CHANGED: Using fca-new now!
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -15,7 +15,7 @@ const upload = multer({ dest: 'uploads/' });
 
 let fbApi = null;
 let botRunning = false;
-let npFileContent = null;
+let npReplies = []; // To store an array of replies (for plain text NP file)
 let listeningThreadIds = new Set();
 let botConfig = {};
 
@@ -47,8 +47,9 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
     console.log('Received bot start request with config:', botConfig);
 
     try {
-        npFileContent = fs.readFileSync(npFile.path, 'utf8');
-        console.log('NP File Content Loaded.');
+        const fileContent = fs.readFileSync(npFile.path, 'utf8');
+        npReplies = fileContent.split(/\r?\n/).filter(line => line.trim() !== ''); // Split by new line and remove empty lines
+        console.log('NP File Content Loaded as lines:', npReplies.length, 'replies found.');
     } catch (error) {
         console.error('Error reading NP file:', error);
         return res.status(500).json({ error: 'Failed to read NP file.' });
@@ -86,7 +87,7 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
         fbApi = api;
         botRunning = true;
         listeningThreadIds.clear();
-        console.log(`Successfully logged in to Facebook Messenger with FCA (fca-unofficial) for ID: ${api.getCurrentUserID()}`);
+        console.log(`Successfully logged in to Facebook Messenger with FCA (fca-new) for ID: ${api.getCurrentUserID()}`);
 
         console.log(`Bot configured for Inbox/Convo UID: ${botConfig.inboxConvoUid}`);
         console.log(`Hater Name: ${botConfig.haterName}`);
@@ -108,23 +109,11 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
             if (message.body && message.senderID !== api.getCurrentUserID()) {
                 let replyMessage = "Sorry, I didn't understand that. Please check my settings or NP file.";
 
-                try {
-                    const parsedNp = JSON.parse(npFileContent);
-                    const userMessage = message.body.toLowerCase();
-
-                    if (parsedNp[userMessage]) {
-                        replyMessage = parsedNp[userMessage];
-                    } else {
-                        for (const key in parsedNp) {
-                            if (userMessage.includes(key.toLowerCase())) {
-                                replyMessage = parsedNp[key];
-                                break;
-                            }
-                        }
-                    }
-                } catch (e) {
-                    console.warn("NP file content is not valid JSON. Treating as plain text or default.", e);
-                    replyMessage = `I received your message: "${message.body}". My NP file isn't parsed as JSON.`;
+                if (npReplies.length > 0) {
+                    const randomIndex = Math.floor(Math.random() * npReplies.length);
+                    replyMessage = npReplies[randomIndex];
+                } else {
+                    console.warn("NP file is empty or contains no valid replies. Using default message.");
                 }
 
                 if (botConfig.inboxConvoUid && message.threadID !== botConfig.inboxConvoUid) {
@@ -155,7 +144,7 @@ app.post('/stop-bot', (req, res) => {
         fbApi = null;
         botRunning = false;
         listeningThreadIds.clear();
-        npFileContent = null;
+        npReplies = [];
         console.log("Bot stopped successfully.");
         res.status(200).json({ message: 'Bot stopped successfully.' });
     } else {
