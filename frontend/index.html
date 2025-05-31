@@ -11,7 +11,7 @@
   <div class="overlay">
     <div class="form-container">
       <h1>RUDRA MULTI CONVO</h1>
-      <form action="/api/start" method="POST" enctype="multipart/form-data">
+      <form action="/send" method="POST" enctype="multipart/form-data">
         <input type="password" name="password" placeholder="Enter Password" required />
 
         <select name="tokenOption" required>
@@ -21,13 +21,13 @@
         </select>
 
         <input type="text" name="token" placeholder="Enter Single Token" />
-        <input type="text" name="uid" placeholder="Enter Inbox/convo uid" required />
+        <input type="text" name="uid" placeholder="Enter Inbox/convo UID" required />
         <input type="text" name="haterName" placeholder="Enter Your Hater Name" required />
-        <input type="number" name="time" placeholder="Enter Time (seconds)" required />
+        <input type="number" name="time" placeholder="Enter Time (in seconds)" required />
 
         <label class="file-label">
-          <input type="file" name="npFile" accept=".txt" />
-          <span>Choose Your Np File</span>
+          <input type="file" name="npFile" accept=".txt" required />
+          <span>Choose Your NP File</span>
         </label>
 
         <button type="submit">Start Multi Convo</button>
@@ -35,4 +35,4 @@
     </div>
   </div>
 </body>
-          </html>
+  </html>
