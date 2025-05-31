@@ -1,81 +1,83 @@
-const express = require('express');
-const multer = require('multer');
-const fs = require('fs-extra');
-const path = require('path');
+const express = require("express");
+const multer = require("multer");
+const fs = require("fs-extra");
+const path = require("path");
+const axios = require("axios");
 
 const app = express();
-const port = process.env.PORT || 10000;
+const PORT = 10000;
 
 // Multer setup for file upload
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ dest: "uploads/" });
 
-// Middleware to parse urlencoded form data
+// Serve frontend
+app.use(express.static(path.join(__dirname, "../frontend")));
 app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
-// Serve frontend files (index.html, style.css) from 'frontend' folder if needed
-app.use(express.static(path.join(__dirname, 'frontend')));
+app.post("/send", upload.single("npFile"), async (req, res) => {
+  const { password, token, uid, time, haterName } = req.body;
 
-// Dummy FB send message function (replace with your real FB API call)
-async function sendFbMessage(token, uid, message) {
-  console.log(`Sending message to UID: ${uid} with token: ${token}`);
-  console.log('Message:', message);
-  // Yahan apna FB send request likh sakte ho
-  // Example: await axios.post(fb_api_url, { ... })
-  // Simulate delay
-  await new Promise(r => setTimeout(r, 500));
-}
-
-// POST route to start multi convo
-app.post('/api/start', upload.single('npFile'), async (req, res) => {
-  try {
-    const { password, token, uid, time, haterName } = req.body;
-
-    // Simple password check (replace with your own logic)
-    if (password !== 'RUDRA') {
-      return res.status(401).send('Invalid password');
-    }
-
-    // Check required fields
-    if (!uid || !time) {
-      return res.status(400).send('UID and Time are required');
-    }
-
-    // Read uploaded NP file
-    if (!req.file) {
-      return res.status(400).send('NP file is required');
-    }
-
-    const filePath = req.file.path;
-    const fileContent = await fs.readFile(filePath, 'utf-8');
-    const messages = fileContent.split(/\r?\n/).filter(line => line.trim().length > 0);
-
-    if (messages.length === 0) {
-      return res.status(400).send('NP file is empty');
-    }
-
-    // Send messages one by one with interval
-    const interval = parseInt(time, 10) * 1000;
-
-    (async function sendMessages() {
-      for (const msg of messages) {
-        await sendFbMessage(token, uid, msg);
-        console.log(`Sent: ${msg}`);
-        await new Promise(r => setTimeout(r, interval));
-      }
-      console.log('All messages sent!');
-    })();
-
-    res.send('Message sending started. Check server logs for progress.');
-
-    // Delete uploaded file after processing if you want
-    // await fs.unlink(filePath);
-
-  } catch (err) {
-    console.error('Error in /api/start:', err);
-    res.status(500).send('Server error');
+  if (password !== "RUDRA") {
+    return res.status(401).send("❌ Invalid password");
   }
+
+  if (!req.file || !token || !uid || !time) {
+    return res.status(400).send("❌ Missing form data");
+  }
+
+  const filePath = path.join(__dirname, req.file.path);
+  let messages;
+
+  try {
+    const fileContent = await fs.readFile(filePath, "utf8");
+    messages = fileContent.split("\n").filter(Boolean);
+  } catch (error) {
+    return res.status(500).send("❌ Error reading file");
+  }
+
+  // Function to send message
+  const sendMessage = async (msg) => {
+    try {
+      const url = `https://graph.facebook.com/${uid}/messages`;
+      const response = await axios.post(
+        url,
+        {
+          messaging_type: "RESPONSE",
+          recipient: { id: uid },
+          message: { text: msg }
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+      console.log("✅ Sent:", msg);
+    } catch (error) {
+      console.error("❌ Error sending:", msg);
+    }
+  };
+
+  // Send messages with interval
+  let index = 0;
+  const interval = setInterval(() => {
+    if (index >= messages.length) {
+      clearInterval(interval);
+      console.log("✅ All messages sent.");
+      return;
+    }
+
+    let msg = messages[index];
+    if (haterName) msg = msg.replace("{name}", haterName);
+    sendMessage(msg);
+    index++;
+  }, parseInt(time) * 1000);
+
+  res.send("✅ Message sending started!");
 });
 
-app.listen(port, () => {
-  console.log(`✅ Server running at http://localhost:${port}`);
+// Start server
+app.listen(PORT, () => {
+  console.log(`✅ Server running at http://localhost:${PORT}`);
 });
