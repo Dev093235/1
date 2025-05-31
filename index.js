@@ -3,7 +3,7 @@ const bodyParser = require('body-parser');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const login = require('facebook-chat-api'); // FCA API
+const login = require('fca-smart-shankar'); // fca-smart-shankar library import
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -15,11 +15,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 const upload = multer({ dest: 'uploads/' });
 
 // --- Global variables for bot state ---
-let fbApi = null;
+let fbApi = null; // Single bot instance
 let botRunning = false;
 let npFileContent = null;
 let listeningThreadIds = new Set();
-let botConfig = {}; // To store all form inputs for bot logic
+let botConfig = {}; // To store all form inputs for the single bot
 
 // --- Routes ---
 
@@ -27,20 +27,18 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// This route handles the form submission to start the bot
+// This route handles the form submission to start the single bot
 app.post('/start-bot', upload.single('npFile'), async (req, res) => {
     if (botRunning) {
         return res.status(400).json({ error: 'Bot is already running. Please stop it first if you want to restart.' });
     }
 
-    // Capture all form fields based on the new UI (with appStateJson)
     const { appStateJson, phoneNumber, rudraName, someNumber } = req.body;
     const npFile = req.file;
 
-    // Store all captured config for bot's use later
     botConfig = {
-        appState: appStateJson, // Now directly taking appState JSON string
-        inboxConvoUid: phoneNumber,
+        appState: appStateJson,
+        inboxConvoUid: phoneNumber || '',
         haterName: rudraName,
         timeSeconds: someNumber,
         npFilePath: npFile ? npFile.path : null,
@@ -53,7 +51,6 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
 
     console.log('Received bot start request with config:', botConfig);
 
-    // Read uploaded np file content
     try {
         npFileContent = fs.readFileSync(npFile.path, 'utf8');
         console.log('NP File Content Loaded.');
@@ -66,7 +63,6 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
         });
     }
 
-    // --- FCA Login Logic using appState ---
     let appState;
     try {
         appState = JSON.parse(botConfig.appState);
@@ -81,18 +77,22 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
     login({ appState: appState }, (err, api) => {
         if (err) {
             console.error("FCA Login Error:", err);
-            if (err.error === 'login-fac') {
-                return res.status(401).json({ error: 'Facebook 2FA required for this appState. You might need a fresh appState.' });
+            if (err.error) {
+                if (err.error.includes("invalid credentials") || err.error.includes("Login refused")) {
+                    return res.status(401).json({ error: 'Login failed: Invalid appState JSON or Facebook blocked the login attempt. Try fresh cookies.' });
+                }
+                if (err.error.includes("2FA")) {
+                     return res.status(401).json({ error: 'Facebook 2FA required for this appState. Try fresh cookies or disable 2FA.' });
+                }
             }
-            return res.status(500).json({ error: `FCA Login Failed: ${err.message || err}` });
+            return res.status(500).json({ error: `FCA Login Failed: ${err.message || JSON.stringify(err)}` });
         }
 
         fbApi = api;
         botRunning = true;
         listeningThreadIds.clear();
-        console.log("Successfully logged in to Facebook Messenger with FCA using appState!");
+        console.log(`Successfully logged in to Facebook Messenger with FCA (fca-smart-shankar) for ID: ${api.getCurrentUserID()}`);
 
-        // Example of using the other form fields (botConfig)
         console.log(`Bot configured for Inbox/Convo UID: ${botConfig.inboxConvoUid}`);
         console.log(`Hater Name: ${botConfig.haterName}`);
         console.log(`Time (seconds): ${botConfig.timeSeconds}`);
@@ -110,7 +110,6 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
 
             console.log("Received message:", message);
 
-            // --- Auto-reply logic (using npFileContent and other configs) ---
             if (message.body && message.senderID !== api.getCurrentUserID()) {
                 let replyMessage = "Sorry, I didn't understand that. Please check my settings or NP file.";
 
@@ -133,10 +132,21 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
                     replyMessage = `I received your message: "${message.body}". My NP file isn't parsed as JSON.`;
                 }
 
-                api.sendMessage(replyMessage, message.threadID, (sendErr) => {
-                    if (sendErr) console.error("Error sending message:", sendErr);
-                    else console.log(`Replied to ${message.threadID}: "${replyMessage}"`);
-                });
+                if (botConfig.inboxConvoUid && message.threadID !== botConfig.inboxConvoUid) {
+                    return;
+                }
+
+                if (botConfig.haterName) {
+                    replyMessage = `${botConfig.haterName}: ${replyMessage}`;
+                }
+
+                const delay = botConfig.timeSeconds ? botConfig.timeSeconds * 1000 : 0;
+                setTimeout(() => {
+                    api.sendMessage(replyMessage, message.threadID, (sendErr) => {
+                        if (sendErr) console.error("Error sending message:", sendErr);
+                        else console.log(`Replied to ${message.threadID}: "${replyMessage}"`);
+                    });
+                }, delay);
             }
         });
 
@@ -151,6 +161,7 @@ app.post('/stop-bot', (req, res) => {
         fbApi = null;
         botRunning = false;
         listeningThreadIds.clear();
+        npFileContent = null;
         console.log("Bot stopped successfully.");
         res.status(200).json({ message: 'Bot stopped successfully.' });
     } else {
