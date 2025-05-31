@@ -1,91 +1,73 @@
-* {
+body, html {
   margin: 0;
   padding: 0;
-  box-sizing: border-box;
-}
-
-body, html {
   height: 100%;
   font-family: 'Poppins', sans-serif;
 }
 
-body {
-  background-image: url('https://i.imgur.com/BuEIxKc.jpeg');  /* ← Yahan bas image URL badalna ho */
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
-}
-
 .overlay {
-  background-color: rgba(0, 0, 0, 0.5);
+  background: url('https://i.imgur.com/4ZQZ4x7.jpg') no-repeat center center fixed;
+  background-size: cover;
   height: 100%;
+  width: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
 }
 
 .form-container {
-  text-align: center;
-  padding: 25px;
+  background: rgba(0, 0, 0, 0.75);
+  padding: 30px;
+  border-radius: 15px;
+  color: white;
   width: 90%;
-  max-width: 400px;
-  color: #fff;
+  max-width: 500px;
+  box-shadow: 0 0 15px #0ff;
+  text-align: center;
 }
 
-h1 {
-  font-size: 24px;
-  margin-bottom: 20px;
-  font-weight: 700;
-  color: #ffffff;
-  text-shadow: 1px 1px 5px black;
-}
-
-form {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
+.form-container h1 {
+  margin-bottom: 25px;
+  font-size: 28px;
+  color: #00ffff;
 }
 
 input, select {
-  padding: 12px;
-  border: 1.5px solid #ffffff;
+  width: 100%;
+  padding: 10px;
+  margin: 8px 0;
+  border: none;
   border-radius: 8px;
-  background: transparent;
-  color: #ffffff;
-  font-size: 15px;
-}
-
-input::placeholder,
-select {
-  color: #ffffff;
-}
-
-input[type="file"] {
-  display: none;
+  font-size: 14px;
 }
 
 .file-label {
-  border: 1.5px solid #ffffff;
-  color: #ffffff;
+  display: block;
+  margin-top: 10px;
+  background: #1a1a1a;
+  color: #00ffff;
   padding: 10px;
   border-radius: 8px;
-  text-align: center;
   cursor: pointer;
-  font-size: 15px;
+}
+
+.file-label input {
+  display: none;
 }
 
 button {
+  margin-top: 15px;
+  width: 100%;
   padding: 12px;
-  border: 1.5px solid #28a745;
-  background-color: rgba(40, 167, 69, 0.8);
-  color: white;
-  font-size: 16px;
+  background: #00ffff;
+  color: black;
+  font-weight: bold;
+  border: none;
   border-radius: 8px;
+  font-size: 16px;
   cursor: pointer;
-  transition: 0.3s ease;
 }
 
 button:hover {
-  background-color: #218838;
-    }
+  background: #00cccc;
+}
