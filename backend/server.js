@@ -31,6 +31,11 @@ app.post('/start', upload.single('npfile'), (req, res) => {
   res.send(`Started conversation automation with ${npText.length} lines using UID ${inboxUid} and token option ${tokenOption}`);
 });
 
+// ✅ Add this route to fix "Cannot GET /"
+app.get("/", (req, res) => {
+  res.send("🚀 Rudra Multi Convo Backend is Running!");
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
