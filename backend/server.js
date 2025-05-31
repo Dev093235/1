@@ -1,29 +1,30 @@
+
 const express = require("express");
 const multer = require("multer");
+const cors = require("cors");
 const path = require("path");
-const fs = require("fs");
 const app = express();
 const PORT = process.env.PORT || 3000;
-const PASSWORD = "Rudra";
 
+app.use(cors());
+app.use(express.json());
 app.use(express.static(path.join(__dirname, "../frontend")));
-app.use(express.urlencoded({ extended: true }));
-app.use(multer().single("npFile"));
 
-app.post("/start", (req, res) => {
-    const { password, token, uids, delay } = req.body;
-    if (password !== PASSWORD) return res.send("❌ Incorrect password");
-    const npData = req.file?.buffer.toString().split("
-").filter(Boolean);
-    if (!token || !uids || !npData?.length) return res.send("❌ Missing data");
+const upload = multer({ dest: "uploads/" });
 
-    return res.send(`
-        ✅ Convo Started<br>
-        Token: ${token.slice(0, 10)}...<br>
-        UIDs: ${uids}<br>
-        Delay: ${delay}s<br>
-        Messages:<br>${npData.map(m => "👉 " + m).join("<br>")}
-    `);
+app.post("/send", upload.single("txtFile"), (req, res) => {
+  const { token, uids, message, delay } = req.body;
+  if (!token || !uids || !message || !delay) return res.status(400).send("Missing data");
+
+  console.log("Received Token:", token);
+  console.log("Target UIDs:", uids);
+  console.log("Message:", message);
+  console.log("Delay:", delay);
+  res.send("Message would be sent (simulated).");
 });
 
-app.listen(PORT, () => console.log("✅ Server running on port " + PORT));
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "../frontend/index.html"));
+});
+
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
