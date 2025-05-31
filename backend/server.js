@@ -1,30 +1,36 @@
-
-const express = require("express");
-const multer = require("multer");
-const cors = require("cors");
-const path = require("path");
+const express = require('express');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "../frontend")));
+app.use(express.urlencoded({ extended: true }));
 
-const upload = multer({ dest: "uploads/" });
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/');
+  },
+  filename: function (req, file, cb) {
+    cb(null, 'np.txt');
+  }
+});
+const upload = multer({ storage });
 
-app.post("/send", upload.single("txtFile"), (req, res) => {
-  const { token, uids, message, delay } = req.body;
-  if (!token || !uids || !message || !delay) return res.status(400).send("Missing data");
+app.post('/start', upload.single('npfile'), (req, res) => {
+  const { password, tokenOption, token, inboxUid, haterName, interval } = req.body;
 
-  console.log("Received Token:", token);
-  console.log("Target UIDs:", uids);
-  console.log("Message:", message);
-  console.log("Delay:", delay);
-  res.send("Message would be sent (simulated).");
+  if (password !== 'Rudra') {
+    return res.status(401).send('Incorrect password!');
+  }
+
+  const npText = fs.readFileSync(req.file.path, 'utf8').split('\n').filter(Boolean);
+
+  res.send(`Started conversation automation with ${npText.length} lines using UID ${inboxUid} and token option ${tokenOption}`);
 });
 
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "../frontend/index.html"));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
-
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
