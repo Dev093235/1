@@ -32,19 +32,14 @@ body, html {
   color: #00ffff;
 }
 
-input, select, textarea {
+input, textarea {
   width: 100%;
   padding: 10px;
   margin: 8px 0;
   border: none;
   border-radius: 8px;
   font-size: 14px;
-  box-sizing: border-box;
-}
-
-textarea {
-  resize: vertical;
-  min-height: 100px;
+  resize: none;
 }
 
 .file-label {
