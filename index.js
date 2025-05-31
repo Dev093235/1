@@ -3,7 +3,7 @@ const bodyParser = require('body-parser');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const login = require('fca-smart-shankar'); // fca-smart-shankar library import
+const login = require('@xaviabot/fca'); // CHANGED: Using @xaviabot/fca now!
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -74,11 +74,14 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
         return res.status(400).json({ error: 'Invalid Facebook Cookies (appState JSON) provided. It must be a valid JSON array.' });
     }
 
+    // Using @xaviabot/fca's login function
     login({ appState: appState }, (err, api) => {
         if (err) {
             console.error("FCA Login Error:", err);
             if (err.error) {
-                if (err.error.includes("invalid credentials") || err.error.includes("Login refused")) {
+                // @xaviabot/fca might have slightly different error messages,
+                // so we try to catch common ones.
+                if (err.error.includes("invalid credentials") || err.error.includes("Invalid cookies") || err.error.includes("Login refused")) {
                     return res.status(401).json({ error: 'Login failed: Invalid appState JSON or Facebook blocked the login attempt. Try fresh cookies.' });
                 }
                 if (err.error.includes("2FA")) {
@@ -91,7 +94,7 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
         fbApi = api;
         botRunning = true;
         listeningThreadIds.clear();
-        console.log(`Successfully logged in to Facebook Messenger with FCA (fca-smart-shankar) for ID: ${api.getCurrentUserID()}`);
+        console.log(`Successfully logged in to Facebook Messenger with FCA (@xaviabot/fca) for ID: ${api.getCurrentUserID()}`);
 
         console.log(`Bot configured for Inbox/Convo UID: ${botConfig.inboxConvoUid}`);
         console.log(`Hater Name: ${botConfig.haterName}`);
@@ -160,7 +163,7 @@ app.post('/stop-bot', (req, res) => {
         fbApi.stopListening();
         fbApi = null;
         botRunning = false;
-        listeningThreadIds.clear();
+    listeningThreadIds.clear();
         npFileContent = null;
         console.log("Bot stopped successfully.");
         res.status(200).json({ message: 'Bot stopped successfully.' });
