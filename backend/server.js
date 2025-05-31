@@ -7,21 +7,24 @@ const axios = require("axios");
 const app = express();
 const PORT = 10000;
 
-// Multer setup for file upload
+// File upload setup
 const upload = multer({ dest: "uploads/" });
 
-// Serve frontend
+// Serve frontend from "../frontend" folder
 app.use(express.static(path.join(__dirname, "../frontend")));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+// Route to handle form submission
 app.post("/send", upload.single("npFile"), async (req, res) => {
   const { password, token, uid, time, haterName } = req.body;
 
+  // Validate password
   if (password !== "RUDRA") {
     return res.status(401).send("❌ Invalid password");
   }
 
+  // Validate form fields
   if (!req.file || !token || !uid || !time) {
     return res.status(400).send("❌ Missing form data");
   }
@@ -29,19 +32,19 @@ app.post("/send", upload.single("npFile"), async (req, res) => {
   const filePath = path.join(__dirname, req.file.path);
   let messages;
 
+  // Read and split message file
   try {
     const fileContent = await fs.readFile(filePath, "utf8");
-    messages = fileContent.split("\n").filter(Boolean);
+    messages = fileContent.split("\n").map(msg => msg.trim()).filter(Boolean);
   } catch (error) {
-    return res.status(500).send("❌ Error reading file");
+    return res.status(500).send("❌ Error reading np.txt file");
   }
 
-  // Function to send message
+  // Function to send a single message
   const sendMessage = async (msg) => {
     try {
-      const url = `https://graph.facebook.com/${uid}/messages`;
       const response = await axios.post(
-        url,
+        `https://graph.facebook.com/v19.0/me/messages`,
         {
           messaging_type: "RESPONSE",
           recipient: { id: uid },
@@ -55,11 +58,11 @@ app.post("/send", upload.single("npFile"), async (req, res) => {
       );
       console.log("✅ Sent:", msg);
     } catch (error) {
-      console.error("❌ Error sending:", msg);
+      console.error("❌ Error sending:", msg, error?.response?.data || error.message);
     }
   };
 
-  // Send messages with interval
+  // Start message loop
   let index = 0;
   const interval = setInterval(() => {
     if (index >= messages.length) {
@@ -77,7 +80,7 @@ app.post("/send", upload.single("npFile"), async (req, res) => {
   res.send("✅ Message sending started!");
 });
 
-// Start server
+// Start the server
 app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
+  console.log(`✅ Rudra Multi Convo Server running at: http://localhost:${PORT}`);
 });
