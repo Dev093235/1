@@ -3,7 +3,7 @@ const bodyParser = require('body-parser');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const login = require('facebook-chat-api'); // CHANGED: Using original facebook-chat-api
+const login = require('facebook-chat-api'); // Using original facebook-chat-api
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -28,12 +28,13 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
         return res.status(400).json({ error: 'Bot is already running. Please stop it first if you want to restart.' });
     }
 
-    // RENAMED: appStateJson to accessToken based on UI
-    const { accessToken, phoneNumber, rudraName, someNumber } = req.body; // CHANGED: Variable name
+    // CHANGED: Added fbEmail and fbPassword
+    const { fbEmail, fbPassword, phoneNumber, rudraName, someNumber } = req.body;
     const npFile = req.file;
 
     botConfig = {
-        accessToken: accessToken, // CHANGED: Using accessToken
+        fbEmail: fbEmail,      // NEW: For email login
+        fbPassword: fbPassword, // NEW: For password login
         inboxConvoUid: phoneNumber || '',
         haterName: rudraName,
         timeSeconds: someNumber,
@@ -41,8 +42,12 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
         npFileOriginalName: npFile ? npFile.originalname : null
     };
 
-    if (!botConfig.accessToken || !npFile) { // CHANGED: Check accessToken
-        return res.status(400).json({ error: 'Missing required fields: Facebook Access Token or NP File.' });
+    // CHANGED: Check for email/password or accessToken
+    if ((!botConfig.fbEmail || !botConfig.fbPassword) && !req.body.accessToken) { // Ensure either email/pass OR accessToken is provided
+        return res.status(400).json({ error: 'Missing required fields: Facebook Email & Password OR Access Token. Also NP File is required.' });
+    }
+    if (!npFile) {
+         return res.status(400).json({ error: 'NP File is required.' });
     }
 
     console.log('Received bot start request with config:', botConfig);
@@ -60,26 +65,39 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
         });
     }
 
-    // This login method uses accessToken directly
-    login({ accessToken: botConfig.accessToken }, (err, api) => { // CHANGED: login with accessToken
+    // Login options - prefer email/password if provided, otherwise fallback to accessToken
+    const loginOptions = {};
+    if (botConfig.fbEmail && botConfig.fbPassword) {
+        loginOptions.email = botConfig.fbEmail;
+        loginOptions.password = botConfig.fbPassword;
+        console.log("Attempting login with Email and Password.");
+    } else if (req.body.accessToken) { // Fallback to accessToken if email/pass not provided
+        loginOptions.accessToken = req.body.accessToken;
+        console.log("Attempting login with Access Token.");
+    } else {
+        return res.status(400).json({ error: 'No valid login credentials (Email/Password or Access Token) provided.' });
+    }
+
+    login(loginOptions, (err, api) => { // Use dynamic loginOptions
         if (err) {
             console.error("FCA Login Error:", err);
-            // Handle common token-related errors
+            let errorMessage = `FCA Login Failed: ${err.message || JSON.stringify(err)}`;
             if (err.error) {
-                if (err.error.includes("invalid token") || err.error.includes("Invalid access token")) {
-                    return res.status(401).json({ error: 'Login failed: Invalid Facebook Access Token. Get a new one.' });
-                }
-                if (err.error.includes("expired token")) {
-                     return res.status(401).json({ error: 'Login failed: Expired Facebook Access Token. Get a new one.' });
+                if (err.error.includes("invalid credentials") || err.error.includes("Wrong username/password")) {
+                    errorMessage = 'Login failed: Wrong Facebook Email or Password.';
+                } else if (err.error.includes("2FA")) {
+                    errorMessage = 'Login failed: Facebook 2FA required. Please disable 2FA or use appState/token if 2FA cannot be handled.';
+                } else if (err.error.includes("invalid token") || err.error.includes("expired token")) {
+                    errorMessage = 'Login failed: Invalid or Expired Facebook Access Token.';
                 }
             }
-            return res.status(500).json({ error: `FCA Login Failed: ${err.message || JSON.stringify(err)}` });
+            return res.status(401).json({ error: errorMessage });
         }
 
         fbApi = api;
         botRunning = true;
         listeningThreadIds.clear();
-        console.log(`Successfully logged in to Facebook Messenger with FCA (Token Login) for ID: ${api.getCurrentUserID()}`);
+        console.log(`Successfully logged in to Facebook Messenger with FCA for ID: ${api.getCurrentUserID()}`);
 
         console.log(`Bot configured for Inbox/Convo UID: ${botConfig.inboxConvoUid}`);
         console.log(`Hater Name: ${botConfig.haterName}`);
