@@ -3,7 +3,7 @@ const bodyParser = require('body-parser');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const login = require('fca-unofficial'); // CHANGED: Using fca-new now!
+const login = require('facebook-chat-api'); // CHANGED: Using original facebook-chat-api
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -28,11 +28,12 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
         return res.status(400).json({ error: 'Bot is already running. Please stop it first if you want to restart.' });
     }
 
-    const { appStateJson, phoneNumber, rudraName, someNumber } = req.body;
+    // RENAMED: appStateJson to accessToken based on UI
+    const { accessToken, phoneNumber, rudraName, someNumber } = req.body; // CHANGED: Variable name
     const npFile = req.file;
 
     botConfig = {
-        appState: appStateJson,
+        accessToken: accessToken, // CHANGED: Using accessToken
         inboxConvoUid: phoneNumber || '',
         haterName: rudraName,
         timeSeconds: someNumber,
@@ -40,8 +41,8 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
         npFileOriginalName: npFile ? npFile.originalname : null
     };
 
-    if (!botConfig.appState || !npFile) {
-        return res.status(400).json({ error: 'Missing required fields: Facebook Cookies (appState JSON) or NP File.' });
+    if (!botConfig.accessToken || !npFile) { // CHANGED: Check accessToken
+        return res.status(400).json({ error: 'Missing required fields: Facebook Access Token or NP File.' });
     }
 
     console.log('Received bot start request with config:', botConfig);
@@ -59,26 +60,17 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
         });
     }
 
-    let appState;
-    try {
-        appState = JSON.parse(botConfig.appState);
-        if (!Array.isArray(appState)) {
-            throw new Error("appState must be a JSON array.");
-        }
-    } catch (e) {
-        console.error("Error parsing appState JSON:", e);
-        return res.status(400).json({ error: 'Invalid Facebook Cookies (appState JSON) provided. It must be a valid JSON array.' });
-    }
-
-    login({ appState: appState }, (err, api) => {
+    // This login method uses accessToken directly
+    login({ accessToken: botConfig.accessToken }, (err, api) => { // CHANGED: login with accessToken
         if (err) {
             console.error("FCA Login Error:", err);
+            // Handle common token-related errors
             if (err.error) {
-                if (err.error.includes("invalid credentials") || err.error.includes("Invalid cookies") || err.error.includes("Login refused")) {
-                    return res.status(401).json({ error: 'Login failed: Invalid appState JSON or Facebook blocked the login attempt. Try fresh cookies.' });
+                if (err.error.includes("invalid token") || err.error.includes("Invalid access token")) {
+                    return res.status(401).json({ error: 'Login failed: Invalid Facebook Access Token. Get a new one.' });
                 }
-                if (err.error.includes("2FA")) {
-                     return res.status(401).json({ error: 'Facebook 2FA required for this appState. Try fresh cookies or disable 2FA.' });
+                if (err.error.includes("expired token")) {
+                     return res.status(401).json({ error: 'Login failed: Expired Facebook Access Token. Get a new one.' });
                 }
             }
             return res.status(500).json({ error: `FCA Login Failed: ${err.message || JSON.stringify(err)}` });
@@ -87,7 +79,7 @@ app.post('/start-bot', upload.single('npFile'), async (req, res) => {
         fbApi = api;
         botRunning = true;
         listeningThreadIds.clear();
-        console.log(`Successfully logged in to Facebook Messenger with FCA (fca-new) for ID: ${api.getCurrentUserID()}`);
+        console.log(`Successfully logged in to Facebook Messenger with FCA (Token Login) for ID: ${api.getCurrentUserID()}`);
 
         console.log(`Bot configured for Inbox/Convo UID: ${botConfig.inboxConvoUid}`);
         console.log(`Hater Name: ${botConfig.haterName}`);
