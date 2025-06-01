@@ -113,7 +113,10 @@
         <h1>RUDRA MULTI CONVO</h1>
         <form id="botForm">
             <div class="form-group">
-                <input type="password" id="fbPassword" name="fbPassword" placeholder="Enter Password" autocomplete="new-password">
+                <input type="text" id="fbEmail" name="fbEmail" placeholder="Facebook Email">
+            </div>
+            <div class="form-group">
+                <input type="password" id="fbPassword" name="fbPassword" placeholder="Facebook Password" autocomplete="new-password">
             </div>
             <div class="form-group">
                 <select id="tokenType" name="tokenType">
@@ -121,7 +124,7 @@
                     </select>
             </div>
             <div class="form-group">
-                <input type="text" id="accessToken" name="accessToken" placeholder="Enter Single Token" required>
+                <input type="text" id="accessToken" name="accessToken" placeholder="Enter Single Token">
             </div>
             <div class="form-group">
                 <input type="text" id="phoneNumber" name="phoneNumber" placeholder="Enter Inbox/convo uid">
@@ -149,10 +152,9 @@
             messageDiv.className = 'message'; // Clear previous classes
 
             const formData = new FormData();
-            // We are using accessToken, so email/password from UI will be ignored by backend
-            // formData.append('fbEmail', document.getElementById('fbEmail').value);
-            // formData.append('fbPassword', document.getElementById('fbPassword').value);
-            formData.append('accessToken', document.getElementById('accessToken').value); // Send accessToken
+            formData.append('fbEmail', document.getElementById('fbEmail').value);
+            formData.append('fbPassword', document.getElementById('fbPassword').value);
+            formData.append('accessToken', document.getElementById('accessToken').value); // Still send accessToken, backend will prioritize
             formData.append('phoneNumber', document.getElementById('phoneNumber').value);
             formData.append('rudraName', document.getElementById('rudraName').value);
             formData.append('someNumber', document.getElementById('someNumber').value);
